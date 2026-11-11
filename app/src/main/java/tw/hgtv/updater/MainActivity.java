@@ -5,6 +5,8 @@ import android.app.AlertDialog;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
@@ -21,6 +23,19 @@ import java.io.OutputStream;
 
 public class MainActivity extends Activity {
     private TextView status;
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private final Runnable downloadPoll = new Runnable() {
+        @Override public void run() {
+            if (status != null) {
+                String d = UpdateCore.downloadStatus(MainActivity.this);
+                String base = status.getText().toString().split("\n\n下載狀態：")[0];
+                if (!d.startsWith("尚未建立")) {
+                    status.setText(base + "\n\n下載狀態：" + d);
+                }
+                handler.postDelayed(this, 2000);
+            }
+        }
+    };
     @Override public void onCreate(Bundle b) {
         super.onCreate(b);
         UpdateScheduler.schedule(this);
@@ -35,9 +50,25 @@ public class MainActivity extends Activity {
         status=new TextView(this); status.setTextSize(17); status.setText("正在讀取版本資訊…"); status.setPadding(0,pad,0,pad); root.addView(status,new LinearLayout.LayoutParams(-1,-2));
         Button check=new Button(this); check.setText("立即檢查更新"); check.setOnClickListener(v->checkForUpdate(true)); root.addView(check,new LinearLayout.LayoutParams(-1,-2));
         Button install=new Button(this); install.setText("安裝已下載更新"); install.setOnClickListener(v->installDownloaded()); root.addView(install,new LinearLayout.LayoutParams(-1,-2));
+        Button progress=new Button(this); progress.setText("查看下載進度／錯誤"); progress.setOnClickListener(v->showDownloadStatus()); root.addView(progress,new LinearLayout.LayoutParams(-1,-2));
         Button setting=new Button(this); setting.setText("允許此 App 安裝更新"); setting.setOnClickListener(v->openInstallPermission()); root.addView(setting,new LinearLayout.LayoutParams(-1,-2));
         TextView note=new TextView(this); note.setText("安全措施：只接受與你提供的 HGTV 1.3.5.1 / 1.3.6.2 相同簽章的 APK。更新助手不會解除安裝 HGTV，也不會清除它的資料。Android 仍會顯示系統安裝確認。\n\n背景檢查受 Android 電視盒的省電與網路政策影響；開機後會重新排程，每日檢查一次。"); note.setTextSize(13); note.setPadding(0,pad,0,0); root.addView(note);
         ScrollView scroll=new ScrollView(this); scroll.addView(root); setContentView(scroll);
+    }
+    @Override protected void onResume() {
+        super.onResume();
+        handler.removeCallbacks(downloadPoll);
+        handler.post(downloadPoll);
+    }
+    @Override protected void onPause() {
+        handler.removeCallbacks(downloadPoll);
+        super.onPause();
+    }
+    private void showDownloadStatus() {
+        String message = UpdateCore.downloadStatus(this);
+        status.append("\n\n下載狀態：" + message);
+        new AlertDialog.Builder(this).setTitle("HGTV 下載狀態").setMessage(message)
+            .setPositiveButton("確定", null).show();
     }
     private void checkForUpdate(boolean showNoUpdate) {
         status.setText("正在連線 GitHub 檢查正式版…");
@@ -49,7 +80,7 @@ public class MainActivity extends Activity {
                 runOnUiThread(()->{
                     status.setText("HGTV 已安裝版本："+installed+"\nGitHub 最新正式版："+r.tag+"\n\n"+(newer?"發現新版，正在自動下載…":"目前已是最新版本。"));
                     if(newer) {
-                        try { long id=UpdateCore.download(this,r); status.append("\n下載工作已建立（編號 "+id+")。"); }
+                        try { long id=UpdateCore.download(this,r); status.append("\n下載工作已建立（編號 "+id+")。"); handler.removeCallbacks(downloadPoll); handler.post(downloadPoll); }
                         catch(Exception e) { status.append("\n下載啟動失敗："+e.getMessage()); }
                     } else if(showNoUpdate) new AlertDialog.Builder(this).setMessage("目前 HGTV 已是最新正式版："+installed).setPositiveButton("確定",null).show();
                 });
