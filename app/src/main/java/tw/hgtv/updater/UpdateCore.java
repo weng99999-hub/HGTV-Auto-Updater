@@ -107,6 +107,63 @@ final class UpdateCore {
         return id;
     }
 
+
+    static String downloadStatus(Context context) {
+        long id = context.getSharedPreferences(PREFS, 0).getLong(KEY_DOWNLOAD_ID, -1);
+        if (id < 0) return "尚未建立下載工作。";
+        DownloadManager dm = (DownloadManager) context.getSystemService(Context.DOWNLOAD_SERVICE);
+        if (dm == null) return "Android DownloadManager 無法使用。";
+        DownloadManager.Query q = new DownloadManager.Query().setFilterById(id);
+        android.database.Cursor cur = null;
+        try {
+            cur = dm.query(q);
+            if (cur == null || !cur.moveToFirst()) return "找不到下載工作（編號 " + id + "）。可能已被系統清除。";
+            int status = cur.getInt(cur.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));
+            long done = cur.getLong(cur.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR));
+            long total = cur.getLong(cur.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES));
+            int reason = cur.getInt(cur.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON));
+            String size = total > 0 ? (done * 100 / total) + "%（" + done + "/" + total + " bytes）" : done + " bytes";
+            switch (status) {
+                case DownloadManager.STATUS_PENDING: return "下載等待中：" + size;
+                case DownloadManager.STATUS_RUNNING: return "正在下載：" + size;
+                case DownloadManager.STATUS_PAUSED: return "下載暫停：" + pauseReason(reason) + "；" + size;
+                case DownloadManager.STATUS_SUCCESSFUL:
+                    File f = downloadedFile(context);
+                    return "下載完成：" + size + "；檔案 " + (f != null && f.exists() ? "存在" : "不存在");
+                case DownloadManager.STATUS_FAILED: return "下載失敗：" + failReason(reason) + "（錯誤碼 " + reason + "）。請重新檢查更新。";
+                default: return "下載狀態未知（" + status + "）。";
+            }
+        } catch (Exception e) {
+            return "讀取下載狀態失敗：" + e.getMessage();
+        } finally {
+            if (cur != null) cur.close();
+        }
+    }
+
+    private static String pauseReason(int r) {
+        switch (r) {
+            case DownloadManager.PAUSED_WAITING_TO_RETRY: return "等待重試";
+            case DownloadManager.PAUSED_WAITING_FOR_NETWORK: return "等待網路";
+            case DownloadManager.PAUSED_QUEUED_FOR_WIFI: return "等待 Wi-Fi";
+            case DownloadManager.PAUSED_UNKNOWN: return "系統暫停";
+            default: return "原因 " + r;
+        }
+    }
+    private static String failReason(int r) {
+        switch (r) {
+            case DownloadManager.ERROR_CANNOT_RESUME: return "無法續傳";
+            case DownloadManager.ERROR_DEVICE_NOT_FOUND: return "儲存裝置不存在";
+            case DownloadManager.ERROR_FILE_ALREADY_EXISTS: return "檔案已存在";
+            case DownloadManager.ERROR_FILE_ERROR: return "檔案寫入錯誤";
+            case DownloadManager.ERROR_HTTP_DATA_ERROR: return "HTTP 資料錯誤";
+            case DownloadManager.ERROR_INSUFFICIENT_SPACE: return "儲存空間不足";
+            case DownloadManager.ERROR_TOO_MANY_REDIRECTS: return "重新導向過多";
+            case DownloadManager.ERROR_UNHANDLED_HTTP_CODE: return "伺服器 HTTP 錯誤";
+            case DownloadManager.ERROR_UNKNOWN: return "未知錯誤";
+            default: return "下載管理員錯誤";
+        }
+    }
+
     static File downloadedFile(Context c) {
         String name = c.getSharedPreferences(PREFS, 0).getString(KEY_NAME, null);
         File dir = c.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
