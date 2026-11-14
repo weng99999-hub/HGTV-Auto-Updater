@@ -1,18 +1,3 @@
-plugins { id 'com.android.application' }
-
-android {
-    namespace 'tw.hgtv.updater'
-    compileSdk 35
-    defaultConfig {
-        applicationId 'tw.hgtv.updater'
-        minSdk 26
-        targetSdk 28
-        versionCode 1
-        versionName '1.0.0'
-    }
-}
-
-
-dependencies {
-    implementation 'androidx.core:core:1.12.0'
+plugins {
+    id 'com.android.application' version '8.6.1' apply false
 }
